@@ -11,6 +11,9 @@ LARGURA_JANELA = LARGURA_MAPA + LARGURA_PAINEL
 LARGURA_CHAT = 400  # Coluna extra aberta no modo chat (janela vai a 1600px)
 ALTURA_JANELA = 700
 
+# Fonte usada em todos os textos da interface
+SEGOE_UI = "Segoe UI"
+
 # Cores da interface
 COR_FUNDO_MAPA = (24, 26, 32)
 COR_PAINEL = (32, 35, 43)
@@ -35,11 +38,12 @@ CORES_ROTAS = [
 _fonte_titulo = None
 _fonte_sub = None
 _fonte_comum = None
+_fonte_rotulo = None
 _tela = None
 
 def inicializar_tela():
     """Inicializa a janela do Pygame e carrega as fontes utilizadas na interface."""
-    global _fonte_titulo, _fonte_sub, _fonte_comum, _tela
+    global _fonte_titulo, _fonte_sub, _fonte_comum, _fonte_rotulo, _tela
 
     pygame.init()
     pygame.font.init()
@@ -47,9 +51,10 @@ def inicializar_tela():
     _tela = pygame.display.set_mode((LARGURA_JANELA, ALTURA_JANELA))
     pygame.display.set_caption("Otimizador de Rotas Hospitalares (VRP)")
 
-    _fonte_titulo = pygame.font.SysFont("Segoe UI", 18, bold=True)
-    _fonte_sub = pygame.font.SysFont("Segoe UI", 14, bold=True)
-    _fonte_comum = pygame.font.SysFont("Segoe UI", 13, bold=False)
+    _fonte_titulo = pygame.font.SysFont(SEGOE_UI, 18, bold=True)
+    _fonte_sub = pygame.font.SysFont(SEGOE_UI, 14, bold=True)
+    _fonte_comum = pygame.font.SysFont(SEGOE_UI, 13, bold=False)
+    _fonte_rotulo = pygame.font.SysFont(SEGOE_UI, 11, bold=True)
 
 def converter_coordenadas(x, y):
     """
@@ -181,6 +186,15 @@ def _desenhar_simulacao(pontos_entrega, melhor_solucao, historico_fitness):
                 # Desenha os pontos de entrega comuns.
                 pygame.draw.circle(_tela, COR_PONTO_NORMAL, (px, py), 5)
                 pygame.draw.circle(_tela, (255, 255, 255), (px, py), 5, 1)
+
+            # Rótulo com o ID do ponto acima da bolinha, com sombra para
+            # continuar legível quando cruza as linhas das rotas. Facilita
+            # relacionar o mapa com as rotas citadas no chat e no dashboard.
+            txt_id = _fonte_rotulo.render(str(ponto.id_ponto), True, COR_TEXTO_PRINCIPAL)
+            pos_rotulo = (px - txt_id.get_width() // 2, py - 24)
+            sombra = _fonte_rotulo.render(str(ponto.id_ponto), True, (0, 0, 0))
+            _tela.blit(sombra, (pos_rotulo[0] + 1, pos_rotulo[1] + 1))
+            _tela.blit(txt_id, pos_rotulo)
 
     # ----------------------------------------------------
     # PAINEL LATERAL
