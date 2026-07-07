@@ -178,6 +178,8 @@ pytest tests/
 # 6. Manual de Integração para os Próximos Integrantes
 Para garantir a continuidade e a escalabilidade do Tech Challenge (Fase 2), este manual estabelece os contratos de dados, interfaces e diretrizes técnicas para os Integrantes 3 e 4.
 
+> **Nota de implementação:** o módulo do Integrante 3 descrito abaixo **já está implementado** em `src/ia/` (construção de contexto em `contexto.py`, prompts em `prompts.py`, chamadas à OpenAI em `assistente.py`), com ponto de entrada headless em `main_ia.py` (requer `OPENAI_API_KEY` no ambiente; modelo configurável via `OPENAI_MODEL`, default `gpt-4o-mini`) e testes em `tests/test_ia_contexto.py`. As seções seguintes permanecem como registro do contrato de dados original.
+
 ## Módulo do Integrante 3 — Inteligência Artificial
 Sua responsabilidade é acoplar uma camada de inteligência cognitiva (LLM - OpenAI ou equivalente) sobre os dados finais obtidos pelo motor de otimização. Você consumirá a melhor solução encontrada e desenvolverá os prompts necessários para a geração de relatórios executivos, instruções em linguagem natural para os motoristas e uma interface de consulta estilo chat.
 
