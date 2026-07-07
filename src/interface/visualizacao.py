@@ -406,13 +406,15 @@ def _desenhar_simulacao(pontos_entrega, melhor_solucao, historico_fitness):
 # ----------------------------------------------------
 
 # Cores específicas do painel de chat
-COR_CHAT_USUARIO = (96, 165, 250)      # Azul claro (perguntas)
-COR_CHAT_ASSISTENTE = (16, 185, 129)   # Verde (respostas)
-COR_CHAT_ERRO = (248, 113, 113)        # Vermelho claro (falhas de rede/API)
+COR_CHAT_USUARIO = (96, 165, 250)        # Azul claro (perguntas)
+COR_CHAT_ASSISTENTE = COR_GRAFICO_LINHA  # Verde (respostas)
+COR_CHAT_ERRO = (248, 113, 113)          # Vermelho claro (falhas de rede/API)
 COR_CAIXA_INPUT = (20, 22, 28)
 COR_BORDA_INPUT = (70, 78, 95)
 COR_SUGESTAO_FUNDO = (42, 46, 56)
 COR_SUGESTAO_HOVER = (58, 63, 78)
+COR_DIVISORIA = (55, 60, 74)             # Linhas que separam as regiões do painel
+COR_TRILHO_ROLAGEM = (45, 49, 60)        # Fundo da barra de rolagem da conversa
 
 # Geometria do painel de chat (terceira coluna, à direita do dashboard)
 _CHAT_MARGEM = 12
@@ -571,7 +573,7 @@ def _desenhar_historico(historico_chat, area, scroll):
         altura_polegar = max(24, int(area.height * (area.height / altura_total)))
         curso = area.height - altura_polegar
         y_polegar = area.y + int((1 - scroll / scroll_maximo) * curso)
-        pygame.draw.rect(_tela, (45, 49, 60),
+        pygame.draw.rect(_tela, COR_TRILHO_ROLAGEM,
                          (area.right - 4, area.y, 4, area.height), border_radius=2)
         pygame.draw.rect(_tela, COR_BORDA_INPUT,
                          (area.right - 4, y_polegar, 4, altura_polegar), border_radius=2)
@@ -579,38 +581,16 @@ def _desenhar_historico(historico_chat, area, scroll):
     return scroll_maximo
 
 
-def _desenhar_painel_chat(historico_chat, perguntas_exemplo,
-                          texto_digitado, aguardando, scroll):
+def _desenhar_caixa_entrada(texto_digitado, aguardando):
     """
-    Desenha o painel de chat na terceira coluna da janela (à direita do dashboard).
+    Desenha a caixa de digitação na base do painel de chat: cursor piscante,
+    dica quando vazia e o indicador de "pensando" durante a consulta à LLM.
 
-    Duas regiões fixas: as perguntas de exemplo sempre visíveis no topo e o
-    histórico da conversa com barra de rolagem logo abaixo.
-    Retorna (rects_sugestoes, scroll_maximo): os retângulos clicáveis das
-    perguntas de exemplo e o limite de rolagem do histórico para o loop de
-    eventos aplicar no scroll do mouse.
+    Retorna o rect da caixa, usado para calcular a área útil do painel.
     """
     tempo_atual = pygame.time.get_ticks()
-    x0 = LARGURA_JANELA + _CHAT_MARGEM
-
-    # Fundo do painel e divisória em relação ao dashboard.
-    pygame.draw.rect(_tela, COR_PAINEL, (LARGURA_JANELA, 0, LARGURA_CHAT, ALTURA_JANELA))
-    pygame.draw.line(_tela, (55, 60, 74),
-                     (LARGURA_JANELA, 0), (LARGURA_JANELA, ALTURA_JANELA))
-
-    # Cabeçalho do assistente.
-    txt_titulo = _fonte_titulo.render("ASSISTENTE DE LOGÍSTICA (IA)", True, COR_TEXTO_PRINCIPAL)
-    _tela.blit(txt_titulo, (x0 + 8, 18))
-    txt_sub = _fonte_comum.render(
-        "Pergunte sobre as rotas, cargas e entregas", True, COR_TEXTO_MUTED
-    )
-    _tela.blit(txt_sub, (x0 + 8, 46))
-    pygame.draw.line(_tela, (55, 60, 74),
-                     (x0, _CHAT_TOPO_CONTEUDO - 16),
-                     (LARGURA_JANELA + LARGURA_CHAT - _CHAT_MARGEM, _CHAT_TOPO_CONTEUDO - 16))
-
-    # Caixa de digitação (parte inferior do painel).
-    caixa = pygame.Rect(x0, ALTURA_JANELA - _CHAT_ALTURA_INPUT - 14,
+    caixa = pygame.Rect(LARGURA_JANELA + _CHAT_MARGEM,
+                        ALTURA_JANELA - _CHAT_ALTURA_INPUT - 14,
                         LARGURA_CHAT - 2 * _CHAT_MARGEM, _CHAT_ALTURA_INPUT)
     pygame.draw.rect(_tela, COR_CAIXA_INPUT, caixa, border_radius=6)
     pygame.draw.rect(_tela, COR_BORDA_INPUT, caixa, 1, border_radius=6)
@@ -634,7 +614,41 @@ def _desenhar_painel_chat(historico_chat, perguntas_exemplo,
         txt_espera = _fonte_comum.render(
             f"Assistente está pensando{pontinhos}", True, COR_CHAT_ASSISTENTE
         )
-        _tela.blit(txt_espera, (x0 + 4, caixa.y - 24))
+        _tela.blit(txt_espera, (caixa.x + 4, caixa.y - 24))
+
+    return caixa
+
+
+def _desenhar_painel_chat(historico_chat, perguntas_exemplo,
+                          texto_digitado, aguardando, scroll):
+    """
+    Desenha o painel de chat na terceira coluna da janela (à direita do dashboard).
+
+    Duas regiões fixas: as perguntas de exemplo sempre visíveis no topo e o
+    histórico da conversa com barra de rolagem logo abaixo.
+    Retorna (rects_sugestoes, scroll_maximo): os retângulos clicáveis das
+    perguntas de exemplo e o limite de rolagem do histórico para o loop de
+    eventos aplicar no scroll do mouse.
+    """
+    x0 = LARGURA_JANELA + _CHAT_MARGEM
+
+    # Fundo do painel e divisória em relação ao dashboard.
+    pygame.draw.rect(_tela, COR_PAINEL, (LARGURA_JANELA, 0, LARGURA_CHAT, ALTURA_JANELA))
+    pygame.draw.line(_tela, COR_DIVISORIA,
+                     (LARGURA_JANELA, 0), (LARGURA_JANELA, ALTURA_JANELA))
+
+    # Cabeçalho do assistente.
+    txt_titulo = _fonte_titulo.render("ASSISTENTE DE LOGÍSTICA (IA)", True, COR_TEXTO_PRINCIPAL)
+    _tela.blit(txt_titulo, (x0 + 8, 18))
+    txt_sub = _fonte_comum.render(
+        "Pergunte sobre as rotas, cargas e entregas", True, COR_TEXTO_MUTED
+    )
+    _tela.blit(txt_sub, (x0 + 8, 46))
+    pygame.draw.line(_tela, COR_DIVISORIA,
+                     (x0, _CHAT_TOPO_CONTEUDO - 16),
+                     (LARGURA_JANELA + LARGURA_CHAT - _CHAT_MARGEM, _CHAT_TOPO_CONTEUDO - 16))
+
+    caixa = _desenhar_caixa_entrada(texto_digitado, aguardando)
 
     # Área útil entre o cabeçalho e a caixa de digitação.
     area = pygame.Rect(x0, _CHAT_TOPO_CONTEUDO,
@@ -643,7 +657,7 @@ def _desenhar_painel_chat(historico_chat, perguntas_exemplo,
 
     # Sugestões fixas no topo; conversa rolável no espaço restante.
     rects_sugestoes, y_divisao = _desenhar_sugestoes(perguntas_exemplo, area)
-    pygame.draw.line(_tela, (55, 60, 74), (area.x, y_divisao + 4), (area.right, y_divisao + 4))
+    pygame.draw.line(_tela, COR_DIVISORIA, (area.x, y_divisao + 4), (area.right, y_divisao + 4))
     area_historico = pygame.Rect(area.x, y_divisao + 12,
                                  area.width, area.bottom - (y_divisao + 12))
     scroll_maximo = _desenhar_historico(historico_chat, area_historico, scroll)

@@ -16,20 +16,16 @@ na raiz do projeto, se existir — ver .env.example):
 
 import os
 import json
-from typing import Callable
+from typing import Callable, Optional
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# Variáveis já definidas no ambiente têm precedência sobre o .env.
-load_dotenv()
 from src.ia.prompts import SYSTEM_PROMPT_CHAT
 
+# Variáveis já definidas no ambiente têm precedência sobre o .env.
+load_dotenv()
+
 MODELO_PADRAO = "gpt-4o-mini"
-
-
-def chave_api_disponivel() -> bool:
-    """Indica se o chat pode ser habilitado (OPENAI_API_KEY presente no ambiente)."""
-    return bool(os.environ.get("OPENAI_API_KEY"))
 
 
 def _obter_modelo() -> str:
@@ -51,21 +47,20 @@ def montar_perguntas_exemplo(contexto: dict) -> list:
     return perguntas
 
 
-def criar_respondedor(contexto: dict) -> Callable[[str], str]:
+def criar_respondedor(contexto: dict) -> Optional[Callable[[str], str]]:
     """
     Cria a função de chat usada pela interface: responder(pergunta) -> resposta.
+
+    Retorna None quando OPENAI_API_KEY não está definida (nem no ambiente nem
+    no .env — ver .env.example): quem chama decide como degradar sem o chat.
 
     O contexto JSON é injetado uma única vez no system prompt e o histórico de
     mensagens fica retido na closure, permitindo conversa multi-turno. A função
     retornada é bloqueante (faz uma requisição HTTP), então a interface deve
     chamá-la fora da thread de renderização.
     """
-    if not chave_api_disponivel():
-        raise RuntimeError(
-            "A variável de ambiente OPENAI_API_KEY não está definida. "
-            "Copie o arquivo .env.example para .env na raiz do projeto e preencha sua chave, "
-            "ou exporte-a no ambiente (ex.: set OPENAI_API_KEY=sk-... no Windows)."
-        )
+    if not os.environ.get("OPENAI_API_KEY"):
+        return None
 
     cliente = OpenAI()
     payload = json.dumps(contexto, ensure_ascii=False, indent=2)

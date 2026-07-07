@@ -4,7 +4,7 @@ from src.interface.visualizacao import inicializar_tela, atualizar_frame_tempo_r
 from src.core.models import PontoEntrega, Veiculo
 from src.core.genetic_alg import OtimizadorVRP
 from src.ia.contexto import construir_contexto
-from src.ia.assistente import chave_api_disponivel, criar_respondedor, montar_perguntas_exemplo
+from src.ia.assistente import criar_respondedor, montar_perguntas_exemplo
 
 def gerar_pontos_aleatorios(quantidade: int) -> list[PontoEntrega]:
     """Gera automaticamente uma lista de pontos com coordenadas e cargas aleatórias."""
@@ -75,15 +75,15 @@ def rodar_teste():
     # Nenhuma requisição é feita automaticamente: a LLM só é consultada quando o usuário pergunta.
     # Sem OPENAI_API_KEY, a janela apenas congela o resultado do fluxo anterior.
     # ----------------------------------------------------------------
-    responder = None
+    contexto = construir_contexto(pontos, melhor_solucao)
+    responder = criar_respondedor(contexto)
     perguntas_exemplo = None
-    if chave_api_disponivel():
-        contexto = construir_contexto(pontos, melhor_solucao)
-        responder = criar_respondedor(contexto)
+    if responder is not None:
         perguntas_exemplo = montar_perguntas_exemplo(contexto)
         print("\nChat com o assistente habilitado na janela — faça perguntas por lá.")
     else:
-        print("\nAviso: OPENAI_API_KEY não definida — o chat da janela ficou desativado.")
+        print("\nAviso: OPENAI_API_KEY não definida (veja .env.example) — "
+              "o chat da janela ficou desativado.")
 
     manter_tela_aberta(
         pontos_entrega=pontos,
