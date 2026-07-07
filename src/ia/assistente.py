@@ -40,7 +40,7 @@ def montar_perguntas_exemplo(contexto: dict) -> list:
     """Monta sugestões de perguntas, usando os dados reais do cenário quando possível."""
     perguntas = [
         "Quais são as instruções de entrega dos motoristas?",
-        "Poderia gerar um relatório sobre eficiência de rotas, economia de tempo e recursos?",
+        "Poderia gerar um relatório completo sobre as rotas?",
         "Poderia sugerir melhorias nas rotas com base nos padrões identificados?",
         "Quais rotas possuem pontos críticos de urgência médica?",
         "Qual veículo está com a maior ocupação de capacidade?",

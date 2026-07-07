@@ -421,6 +421,39 @@ _CHAT_TOPO_CONTEUDO = 96
 _CHAT_ALTURA_INPUT = 36
 
 
+# Símbolos que a LLM costuma emitir e que têm um equivalente simples garantido
+# na fonte da interface (bullets, travessões, aspas curvas, tab, espaço rígido).
+_SUBSTITUICOES_TEXTO = {
+    "\t": "  ",
+    "•": "-", "◦": "-", "▪": "-", "‣": "-", "·": "-",
+    "–": "-", "—": "-",
+    "“": '"', "”": '"', "‘": "'", "’": "'",
+    "…": "...",
+    " ": " ",
+}
+
+
+def _sanitizar_texto(texto, fonte):
+    """
+    Prepara um texto para renderização: troca símbolos comuns por equivalentes
+    simples e descarta caracteres que a fonte não desenha.
+
+    O Pygame/SDL_ttf não tem fallback de fontes como um navegador — qualquer
+    caractere ausente na fonte (emojis, setas, marcadores exóticos) viraria um
+    retângulo vazio ("tofu") na tela. O filtro combina duas checagens, porque
+    `fonte.metrics` sozinho não é confiável (para alguns símbolos ele devolve
+    as métricas do glifo-caixinha em vez de None): só passam caracteres da
+    faixa latina do Unicode (< U+0250, que cobre todo o português) que também
+    tenham glifo confirmado pela fonte.
+    """
+    for original, substituto in _SUBSTITUICOES_TEXTO.items():
+        texto = texto.replace(original, substituto)
+    return "".join(
+        char for char in texto
+        if char == "\n" or (ord(char) < 0x0250 and fonte.metrics(char)[0] is not None)
+    )
+
+
 def _quebrar_texto(texto, fonte, largura_max):
     """Quebra um texto em linhas que caibam em largura_max pixels (quebra por palavra)."""
     linhas = []
@@ -463,14 +496,99 @@ def _montar_linhas_conversa(historico_chat):
     return linhas
 
 
+def _desenhar_sugestoes(perguntas_exemplo, area):
+    """
+    Desenha o bloco fixo de perguntas de exemplo no topo da área do chat.
+
+    O bloco ocupa no máximo ~metade da área para o histórico da conversa nunca
+    desaparecer; sugestões que não couberem inteiras são omitidas. Retorna
+    (rects_clicaveis, y_final), onde y_final é onde o histórico começa.
+    """
+    mouse = pygame.mouse.get_pos()
+    rects_sugestoes = []
+
+    dica = "Digite sua pergunta, ou clique em um dos exemplos de perguntas abaixo:"
+    y_atual = area.y
+    for linha in _quebrar_texto(dica, _fonte_sub, area.width - 8):
+        _tela.blit(_fonte_sub.render(linha, True, COR_TEXTO_PRINCIPAL), (area.x + 4, y_atual))
+        y_atual += _fonte_sub.get_linesize()
+    y_atual += 8
+
+    limite_inferior = area.y + int(area.height * 0.55)
+    for pergunta in perguntas_exemplo:
+        linhas = _quebrar_texto(pergunta, _fonte_comum, _CHAT_LARGURA_TEXTO - 8)
+        altura_carta = len(linhas) * _fonte_comum.get_linesize() + 12
+        if y_atual + altura_carta > limite_inferior:
+            break  # Não desenha sugestão que não caiba no espaço reservado.
+
+        carta = pygame.Rect(area.x, y_atual, area.width, altura_carta)
+        cor_fundo = COR_SUGESTAO_HOVER if carta.collidepoint(mouse) else COR_SUGESTAO_FUNDO
+        pygame.draw.rect(_tela, cor_fundo, carta, border_radius=6)
+        for i, linha in enumerate(linhas):
+            txt = _fonte_comum.render(linha, True, COR_TEXTO_PRINCIPAL)
+            _tela.blit(txt, (carta.x + 10, carta.y + 6 + i * _fonte_comum.get_linesize()))
+
+        rects_sugestoes.append((carta, pergunta))
+        y_atual += altura_carta + 8
+
+    return rects_sugestoes, y_atual
+
+
+def _desenhar_historico(historico_chat, area, scroll):
+    """
+    Desenha a conversa dentro de `area`, ancorada na mensagem mais recente,
+    com barra de rolagem proporcional à direita quando o conteúdo não cabe
+    (a roda do mouse controla a posição).
+
+    Retorna o scroll máximo em pixels (0 quando a conversa inteira cabe).
+    """
+    if not historico_chat:
+        txt_vazio = _fonte_comum.render("A conversa aparecerá aqui.", True, COR_TEXTO_MUTED)
+        _tela.blit(txt_vazio, (area.x + 4, area.y + 8))
+        return 0
+
+    linhas = _montar_linhas_conversa(historico_chat)
+    altura_linha = _fonte_comum.get_linesize()
+    altura_total = len(linhas) * altura_linha
+    scroll_maximo = max(0, altura_total - area.height)
+    scroll = max(0, min(scroll, scroll_maximo))
+
+    _tela.set_clip(area)
+    if altura_total <= area.height:
+        y_atual = area.y
+    else:
+        # Alinha o fim da conversa à base da área; scroll > 0 revela mensagens antigas.
+        y_atual = area.bottom - altura_total + scroll
+    for texto, cor, destaque in linhas:
+        if texto and y_atual + altura_linha >= area.y and y_atual <= area.bottom:
+            fonte = _fonte_sub if destaque else _fonte_comum
+            _tela.blit(fonte.render(texto, True, cor), (area.x + 4, y_atual))
+        y_atual += altura_linha
+    _tela.set_clip(None)
+
+    # Barra de rolagem: o tamanho do polegar reflete a fração visível da conversa.
+    if scroll_maximo > 0:
+        altura_polegar = max(24, int(area.height * (area.height / altura_total)))
+        curso = area.height - altura_polegar
+        y_polegar = area.y + int((1 - scroll / scroll_maximo) * curso)
+        pygame.draw.rect(_tela, (45, 49, 60),
+                         (area.right - 4, area.y, 4, area.height), border_radius=2)
+        pygame.draw.rect(_tela, COR_BORDA_INPUT,
+                         (area.right - 4, y_polegar, 4, altura_polegar), border_radius=2)
+
+    return scroll_maximo
+
+
 def _desenhar_painel_chat(historico_chat, perguntas_exemplo,
                           texto_digitado, aguardando, scroll):
     """
     Desenha o painel de chat na terceira coluna da janela (à direita do dashboard).
 
+    Duas regiões fixas: as perguntas de exemplo sempre visíveis no topo e o
+    histórico da conversa com barra de rolagem logo abaixo.
     Retorna (rects_sugestoes, scroll_maximo): os retângulos clicáveis das
-    perguntas de exemplo (vazio quando a conversa já começou) e o limite de
-    rolagem do histórico para o loop de eventos aplicar no scroll do mouse.
+    perguntas de exemplo e o limite de rolagem do histórico para o loop de
+    eventos aplicar no scroll do mouse.
     """
     tempo_atual = pygame.time.get_ticks()
     x0 = LARGURA_JANELA + _CHAT_MARGEM
@@ -514,7 +632,7 @@ def _desenhar_painel_chat(historico_chat, perguntas_exemplo,
     if aguardando:
         pontinhos = "." * (1 + (tempo_atual // 400) % 3)
         txt_espera = _fonte_comum.render(
-            f"Assistente está digitando{pontinhos}", True, COR_CHAT_ASSISTENTE
+            f"Assistente está pensando{pontinhos}", True, COR_CHAT_ASSISTENTE
         )
         _tela.blit(txt_espera, (x0 + 4, caixa.y - 24))
 
@@ -523,56 +641,14 @@ def _desenhar_painel_chat(historico_chat, perguntas_exemplo,
                        LARGURA_CHAT - 2 * _CHAT_MARGEM,
                        caixa.y - 28 - _CHAT_TOPO_CONTEUDO)
 
-    # Antes da primeira pergunta: sugestões clicáveis no lugar do histórico.
-    if not historico_chat:
-        rects_sugestoes = []
-        mouse = pygame.mouse.get_pos()
-        txt_dica = _fonte_sub.render("Exemplos (clique para perguntar):", True, COR_TEXTO_PRINCIPAL)
-        _tela.blit(txt_dica, (x0 + 4, area.y))
+    # Sugestões fixas no topo; conversa rolável no espaço restante.
+    rects_sugestoes, y_divisao = _desenhar_sugestoes(perguntas_exemplo, area)
+    pygame.draw.line(_tela, (55, 60, 74), (area.x, y_divisao + 4), (area.right, y_divisao + 4))
+    area_historico = pygame.Rect(area.x, y_divisao + 12,
+                                 area.width, area.bottom - (y_divisao + 12))
+    scroll_maximo = _desenhar_historico(historico_chat, area_historico, scroll)
 
-        y_atual = area.y + 30
-        for pergunta in perguntas_exemplo:
-            linhas = _quebrar_texto(pergunta, _fonte_comum, _CHAT_LARGURA_TEXTO - 8)
-            altura_carta = len(linhas) * _fonte_comum.get_linesize() + 12
-            if y_atual + altura_carta > area.bottom:
-                break  # Não desenha sugestão que não caiba inteira no painel.
-
-            carta = pygame.Rect(x0, y_atual, area.width, altura_carta)
-            cor_fundo = COR_SUGESTAO_HOVER if carta.collidepoint(mouse) else COR_SUGESTAO_FUNDO
-            pygame.draw.rect(_tela, cor_fundo, carta, border_radius=6)
-            for i, linha in enumerate(linhas):
-                txt = _fonte_comum.render(linha, True, COR_TEXTO_PRINCIPAL)
-                _tela.blit(txt, (carta.x + 10, carta.y + 6 + i * _fonte_comum.get_linesize()))
-
-            rects_sugestoes.append((carta, pergunta))
-            y_atual += altura_carta + 8
-        return rects_sugestoes, 0
-
-    # Conversa em andamento: histórico com rolagem (roda do mouse).
-    linhas = _montar_linhas_conversa(historico_chat)
-    altura_linha = _fonte_comum.get_linesize()
-    altura_total = len(linhas) * altura_linha
-    scroll_maximo = max(0, altura_total - area.height)
-    scroll = max(0, min(scroll, scroll_maximo))
-
-    _tela.set_clip(area)
-    if altura_total <= area.height:
-        y_atual = area.y
-    else:
-        # Alinha o fim da conversa à base da área; scroll > 0 revela mensagens antigas.
-        y_atual = area.bottom - altura_total + scroll
-    for texto, cor, destaque in linhas:
-        if texto and y_atual + altura_linha >= area.y and y_atual <= area.bottom:
-            fonte = _fonte_sub if destaque else _fonte_comum
-            _tela.blit(fonte.render(texto, True, cor), (x0 + 4, y_atual))
-        y_atual += altura_linha
-    _tela.set_clip(None)
-
-    if scroll_maximo > 0 and scroll < scroll_maximo:
-        txt_rolagem = _fonte_comum.render("Use a roda do mouse para rolar", True, COR_TEXTO_MUTED)
-        _tela.blit(txt_rolagem, (x0 + 4, area.y - 2))
-
-    return [], scroll_maximo
+    return rects_sugestoes, scroll_maximo
 
 
 def _loop_chat(pontos_entrega, melhor_solucao, historico_fitness, responder, perguntas_exemplo):
@@ -600,7 +676,7 @@ def _loop_chat(pontos_entrega, melhor_solucao, historico_fitness, responder, per
 
     def enviar(pergunta):
         nonlocal aguardando, texto_digitado, scroll
-        historico_chat.append(("usuario", pergunta))
+        historico_chat.append(("usuario", _sanitizar_texto(pergunta, _fonte_comum)))
         texto_digitado = ""
         scroll = 0
         aguardando = True
@@ -644,9 +720,11 @@ def _loop_chat(pontos_entrega, melhor_solucao, historico_fitness, responder, per
             elif evento.type == pygame.MOUSEWHEEL:
                 scroll = max(0, min(scroll + evento.y * 30, scroll_maximo))
 
-        # Recolhe respostas concluídas pela thread de consulta.
+        # Recolhe respostas concluídas pela thread de consulta, já saneadas
+        # para a fonte da interface (evita "tofu" de emoji/símbolo sem glifo).
         try:
-            historico_chat.append(fila_respostas.get_nowait())
+            papel, texto = fila_respostas.get_nowait()
+            historico_chat.append((papel, _sanitizar_texto(texto, _fonte_comum)))
             aguardando = False
             scroll = 0
         except queue.Empty:
